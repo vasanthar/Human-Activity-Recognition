@@ -1,0 +1,126 @@
+---
+title: "Human action recognition - lifting type prediction"
+author: "Vasantha"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Summary
+Accelerometer sensor on the belt, forearm, arm and dumbell of six participants performing dumbell lifts correctly and incorrectly is obtained from weight lifting dataset ( http://groupware.les.inf.puc-rio.br/har). The data is used to predict lifting categories such as lifting correctly (Class A),throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).  Here, two methods namely random forest and decision trees are used for predicting the lifting category. Following document describes the procedure adopted and the relevant 'r' code for the same. 
+
+Following relevant libraries are used:
+```{r}
+library(caret)
+library(randomForest)
+```
+
+### Getting the data 
+Training and testing csv data is dowloaded read as follows:
+```{r}
+# creating data file in case it does not exist
+if (!file.exists("data")){
+  dir.create("data")
+}
+
+# load csv files 
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile ="./data/training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile ="./data/testing.csv")
+
+training <- read.csv("./data./training.csv", stringsAsFactors = F)
+testing <- read.csv("./data./testing.csv", stringsAsFactors = F)
+```
+
+Test and train data are loaded. Their dimensions are as follows:
+```{r}
+dim(training)
+dim(testing)
+```
+
+### Cleaning the data
+Training data has 19622 entries adn 160 columns. Not all columns are required for analysis. The dataset is cleaned for the purpose of analysis. 
+```{r}
+rmcol <- grepl("^X|user|time|window|kurtosis|skewness|max|min|amplitude|var|avg|stddev", colnames(training))
+training2 <- training[, rmcol == FALSE]
+testing2 <- testing[, rmcol == FALSE]
+training2$classe <- as.factor(training2$classe)
+```
+
+Now both the train and test data set have 53 columns. The last column for train data set is called 'classe', which is nothing but the lifting category. Now, lets see the plot of differnt lifting type with respect to accelerometer readings for dumbell. 
+```{r}
+featurePlot(x = training2[, c("magnet_dumbbell_x", "magnet_dumbbell_y", "magnet_dumbbell_z")], y = training2$classe, plot = 'pairs', labels = T)
+```
+
+From the plot it is observed that there exists differences between sensor readings for differnt lifting type. Now, lets examine the correlation between differnt sensor readings. 
+```{r}
+corr <- abs(cor(training2[,-53]))
+diag(corr) <- 0 
+which(corr > 0.8,arr.ind=T)
+```
+
+19 of the variables have corelation value greater than 0.8. In order to predict the type of lifting, it is required to build a suitable machine learning model. 
+
+### Splitting the data 
+The training data that was previously dowloaded, is split as training and testing data with splitting ratio of 0.7. 
+```{r}
+intrain <- createDataPartition(y = training2$classe, p = 0.7, list = F)
+train_data <- training2[intrain,]
+test_data <- training2[-intrain,]
+```
+
+### Test control
+Following test control are used for the model:
+```{r}
+set.seed(123)
+# test control
+control <- trainControl(method='repeatedcv', number = 10, repeats = 3, search = 'grid')
+```
+
+### Model 1 : Decision trees 
+The first model that is fitted is the dicision trees. The prediction model is used for predicting the lifting type for test data set. 
+```{r}
+model_rpart <- train(classe ~., data = train_data, method = 'rpart', trControl = control)
+```
+
+It is possible to view the trees as follows:
+```{r}
+# view trees
+plot(model_rpart$finalModel, uniform = T, main = 'Classification tree')
+text(model_rpart$finalModel, use.n = T, all = T, cex = 0.8)
+```
+
+The predictions of the model for the test data is as follows:
+```{r}
+predictions <- predict(model_rpart, test_data)
+conf_rpart <- confusionMatrix(predictions, test_data$classe)
+conf_rpart$overall[1]
+conf_rpart$table
+```
+
+The accuracy of the model is around 0.50. 
+
+### Model2 : random forest
+Similar to the previous model, random forest is used for prediction of lifting type for the test data. 
+```{r}
+model_rf <- randomForest(classe ~., data = train_data, trControl = control)
+predictions <- predict(model_rf, test_data)
+conf_rf <- confusionMatrix(predictions, test_data$classe)
+conf_rf$overall[1]
+conf_rf$table
+```
+
+The model has prediction accuracy of 0.99. Hence, it performs better than decision trees model.This model is used for predicting lifting type for the previously downloaded testing data. 
+```{r}
+prediction_test <- predict(model_rf, testing2)
+prediction_test
+```
+
+
+Reference:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
+
+
+
